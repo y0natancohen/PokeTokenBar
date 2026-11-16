@@ -16,7 +16,11 @@ jobs:
     name: build-test
     # macos-15 ships Xcode 16 / Swift 6, which Package.swift requires
     # (swift-tools-version: 6.0, platform macOS 14).
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
 
@@ -33,13 +37,33 @@ jobs:
         env:
           PTB_SNAPSHOT_SCREENSHOT_DIR: ${{ runner.temp }}/snapshot-history-renders
           PTB_ZERO_USAGE_SCREENSHOT_DIR: ${{ runner.temp }}/snapshot-history-renders/zero-usage
-        run: ./scripts/test-gate.sh
+        run: |
+          if [ "${{ matrix.os }}" = "macos-15-intel" ]; then
+            # The Intel VM has no Metal device, so suites that render abort. One process per suite, so
+            # an abort cannot hide the others; a Metal abort is reported but does not fail the job.
+            swift build --build-tests 2>&1 | tail -1
+            status=0
+            for suite in $(swift test list --skip-build 2>/dev/null | grep '^PokeTokenBarTests\.' | cut -d/ -f1 | sort -u); do
+              if swift test --skip-build --filter "$suite/" > /tmp/suite.log 2>&1; then
+                echo "SUITE $suite: ok — $(grep -E 'Executed [0-9]+ tests' /tmp/suite.log | tail -1 | sed -E 's/^[[:space:]]*//')"
+              elif grep -q MTLLoader /tmp/suite.log; then
+                echo "SUITE $suite: METAL-ABORT (cannot run on this VM)"
+              else
+                status=1
+                echo "SUITE $suite: FAILED"
+                grep -E "error:|failed|signal|Executed" /tmp/suite.log | head -30
+              fi
+            done
+            exit $status
+          else
+            ./scripts/test-gate.sh
+          fi
 
       - name: Preserve native snapshot-history renders
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: snapshot-history-renders
+          name: snapshot-history-renders-${{ matrix.os }}
           path: ${{ runner.temp }}/snapshot-history-renders
           if-no-files-found: ignore
           retention-days: 7
