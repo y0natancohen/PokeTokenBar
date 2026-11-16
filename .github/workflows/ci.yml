@@ -16,7 +16,11 @@ jobs:
     name: build-test
     # macos-15 ships Xcode 16 / Swift 6, which Package.swift requires
     # (swift-tools-version: 6.0, platform macOS 14).
-    runs-on: macos-15
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-15, macos-15-intel]
+    runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
 
@@ -39,7 +43,7 @@ jobs:
         if: always()
         uses: actions/upload-artifact@v4
         with:
-          name: snapshot-history-renders
+          name: snapshot-history-renders-${{ matrix.os }}
           path: ${{ runner.temp }}/snapshot-history-renders
           if-no-files-found: ignore
           retention-days: 7
