@@ -39,18 +39,19 @@ jobs:
           PTB_ZERO_USAGE_SCREENSHOT_DIR: ${{ runner.temp }}/snapshot-history-renders/zero-usage
         run: |
           if [ "${{ matrix.os }}" = "macos-15-intel" ]; then
-            # The Intel VM has no Metal device, so the rendering suites abort the process. Run the
-            # companion, shop and save suites only.
-            # One process per suite: a suite that renders aborts on this VM and must not hide the others.
+            # The Intel VM has no Metal device, so suites that render abort. One process per suite, so
+            # an abort cannot hide the others; a Metal abort is reported but does not fail the job.
             swift build --build-tests 2>&1 | tail -1
             status=0
-            for suite in RegionalIncenseTests ShopTests PremiumEggTests FreshEggTests MintTests ShinyCharmTests CompanionStoreTests CompanionDisplayStateTests CompanionIdentityTests InventoryDecodeTests RareCandyStoreTests RareCandyGrantIntegrationTests CandyGrantEvaluationTests SaveTransferTests SaveSnapshotTests StatePersistenceLogicTests DittoDisguiseRollTests DittoRevealTests EggPrayerTests UnownTests PokemonFormTests DifficultyTests DifficultySaveTests DexCompletionStoreTests DexSearchAndFilterTests DexSortingTests PokemonBalanceTests RarityBoundaryTests PreciousCompanionGuardTests ProfileGrowthIntegrationTests PokemonProfileMigrationTests StoreTerminationTests MenuGrowthTests AppLanguageTests; do
-              if swift test --skip-build --filter "PokeTokenBarTests.$suite/" > "/tmp/$suite.log" 2>&1; then
-                echo "SUITE $suite: ok — $(grep -E 'Executed [0-9]+ tests' "/tmp/$suite.log" | tail -1 | sed -E 's/^[[:space:]]*//')"
+            for suite in $(swift test list --skip-build 2>/dev/null | grep '^PokeTokenBarTests\.' | cut -d/ -f1 | sort -u | grep -v IncenseLiveCheckTests); do
+              if swift test --skip-build --filter "$suite/" > /tmp/suite.log 2>&1; then
+                echo "SUITE $suite: ok — $(grep -E 'Executed [0-9]+ tests' /tmp/suite.log | tail -1 | sed -E 's/^[[:space:]]*//')"
+              elif grep -q MTLLoader /tmp/suite.log; then
+                echo "SUITE $suite: METAL-ABORT (cannot run on this VM)"
               else
                 status=1
                 echo "SUITE $suite: FAILED"
-                grep -E "error:|failed|signal|MTLLoader|Executed" "/tmp/$suite.log" | head -40
+                grep -E "error:|failed|signal|Executed" /tmp/suite.log | head -30
               fi
             done
             exit $status
