@@ -39,24 +39,12 @@ jobs:
           PTB_ZERO_USAGE_SCREENSHOT_DIR: ${{ runner.temp }}/snapshot-history-renders/zero-usage
         run: |
           if [ "${{ matrix.os }}" = "macos-15-intel" ]; then
-            # Mutation check: every injected defect must make RegionalIncenseTests fail.
-            for m in no-rescale no-generation-bump keep-pre-roll rest-no-exclude always-spend never-spend second-incense-allowed share-70; do
-              python3 scripts/tmp-mutate.py "$m"
-              if swift test --filter 'PokeTokenBarTests.RegionalIncenseTests/' > /tmp/m.log 2>&1; then
-                echo "MUTANT $m: SURVIVED"
-              else
-                echo "MUTANT $m: killed — $(grep -E 'Executed [0-9]+ tests' /tmp/m.log | tail -1 | sed -E 's/^[[:space:]]*//') — $(grep -o -E 'RegionalIncenseTests test[A-Za-z]+\]. : ' /tmp/m.log | sed -E 's/RegionalIncenseTests //; s/\]. : //' | sort -u | tr '\n' ' ')"
-                grep -E "error: (?!-\[)" /tmp/m.log | head -3 || true
-              fi
-              git checkout -q -- Sources
-            done
+            # Shop renders for the PR: this branch, then untouched main with the same test file.
             swift test --filter 'PokeTokenBarTests.IncenseShopRenderTests/' 2>&1 | grep -E 'Executed|error' | tail -2 || true
-            # Coverage of the added Core lines, from the suites this VM can run.
             git fetch -q --depth 1 origin main
-            swift test --enable-code-coverage --filter 'PokeTokenBarTests.(RegionalIncenseTests|ShopTests|SaveTransferTests|PremiumEggTests|CompanionStoreTests)/' > /tmp/cov.log 2>&1 || tail -5 /tmp/cov.log
-            PROF=$(find .build -name 'default.profdata' | head -1)
-            BIN=$(find .build -name 'PokeTokenBarPackageTests' -type f ! -path '*.dSYM/*' | head -1)
-            python3 scripts/tmp-uncovered.py FETCH_HEAD "$(xcrun --find llvm-cov)" "$BIN" "$PROF"
+            git worktree add ../base FETCH_HEAD
+            cp Tests/PokeTokenBarTests/IncenseShopRenderTests.swift ../base/Tests/PokeTokenBarTests/
+            (cd ../base && PTB_SNAPSHOT_SCREENSHOT_DIR="$PTB_SNAPSHOT_SCREENSHOT_DIR/before" swift test --filter 'PokeTokenBarTests.IncenseShopRenderTests/' 2>&1 | grep -E 'Executed|error' | tail -2 || true)
           else
             ./scripts/test-gate.sh
           fi
