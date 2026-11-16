@@ -41,8 +41,19 @@ jobs:
           if [ "${{ matrix.os }}" = "macos-15-intel" ]; then
             # The Intel VM has no Metal device, so the rendering suites abort the process. Run the
             # companion, shop and save suites only.
-            swift test --filter 'RegionalIncenseTests|IncenseLiveCheckTests|ShopTests|PremiumEggTests|FreshEggTests|MintTests|ShinyCharmTests|CompanionTests|CompanionDisplayStateTests|SaveTransferTests|SaveSnapshotTests|DittoTests|EggPrayerTests|UnownTests|PokemonFormTests|DifficultyTests|DexCompletionStoreTests|PokedexRegionTests|MenuGrowthTests|ProfileGrowthIntegrationTests|LanguageSurfaceRegressionTests' 2>&1 | tee /tmp/incense-tests.log | grep -E "error|failed|LIVE-SHARE|Executed|passed|signal" || true
-            ! grep -E "with [1-9][0-9]* failures|error: |signal code" /tmp/incense-tests.log
+            # One process per suite: a suite that renders aborts on this VM and must not hide the others.
+            swift build --build-tests 2>&1 | tail -1
+            status=0
+            for suite in RegionalIncenseTests ShopTests PremiumEggTests FreshEggTests MintTests ShinyCharmTests CompanionStoreTests CompanionDisplayStateTests CompanionIdentityTests InventoryDecodeTests RareCandyStoreTests RareCandyGrantIntegrationTests CandyGrantEvaluationTests SaveTransferTests SaveSnapshotTests StatePersistenceLogicTests DittoDisguiseRollTests DittoRevealTests EggPrayerTests UnownTests PokemonFormTests DifficultyTests DifficultySaveTests DexCompletionStoreTests DexSearchAndFilterTests DexSortingTests PokemonBalanceTests RarityBoundaryTests PreciousCompanionGuardTests ProfileGrowthIntegrationTests PokemonProfileMigrationTests StoreTerminationTests MenuGrowthTests AppLanguageTests; do
+              if swift test --skip-build --filter "PokeTokenBarTests.$suite/" > "/tmp/$suite.log" 2>&1; then
+                echo "SUITE $suite: ok — $(grep -E 'Executed [0-9]+ tests' "/tmp/$suite.log" | tail -1 | sed -E 's/^[[:space:]]*//')"
+              else
+                status=1
+                echo "SUITE $suite: FAILED"
+                grep -E "error:|failed|signal|MTLLoader|Executed" "/tmp/$suite.log" | head -40
+              fi
+            done
+            exit $status
           else
             ./scripts/test-gate.sh
           fi
