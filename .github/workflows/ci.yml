@@ -19,10 +19,16 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        os: [macos-15, macos-15-intel]
+        os: [macos-15, macos-14, macos-26]
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v5
+
+      - name: Select Xcode 16 on macos-14
+        if: matrix.os == 'macos-14'
+        run: |
+          ls -d /Applications/Xcode_16*.app | tail -3
+          sudo xcode-select -s "$(ls -d /Applications/Xcode_16*.app | sort -V | tail -1)"
 
       - name: Show Swift version
         run: swift --version
