@@ -50,6 +50,7 @@ jobs:
               fi
               git checkout -q -- Sources
             done
+            swift test --filter 'PokeTokenBarTests.IncenseShopRenderTests/' 2>&1 | grep -E 'Executed|error' | tail -2 || true
             # Coverage of the added Core lines, from the suites this VM can run.
             git fetch -q --depth 1 origin main
             swift test --enable-code-coverage --filter 'PokeTokenBarTests.(RegionalIncenseTests|ShopTests|SaveTransferTests|PremiumEggTests|CompanionStoreTests)/' > /tmp/cov.log 2>&1 || tail -5 /tmp/cov.log
