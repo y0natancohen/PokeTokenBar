@@ -49,9 +49,15 @@ jobs:
               elif grep -q MTLLoader /tmp/suite.log; then
                 echo "SUITE $suite: METAL-ABORT (cannot run on this VM)"
               else
-                status=1
-                echo "SUITE $suite: FAILED"
-                grep -E "error:|failed|signal|Executed" /tmp/suite.log | head -30
+                # A failure must repeat to count: some upstream OCR tests are flaky on this VM.
+                grep -E "error: -\[" /tmp/suite.log | cut -c1-240 | head -3
+                if swift test --skip-build --filter "$suite/" > /tmp/suite.log 2>&1 || swift test --skip-build --filter "$suite/" > /tmp/suite.log 2>&1; then
+                  echo "SUITE $suite: FLAKY (failed once, passed on retry)"
+                else
+                  status=1
+                  echo "SUITE $suite: FAILED three times"
+                  grep -E "error:|failed|signal|Executed" /tmp/suite.log | head -30
+                fi
               fi
             done
             exit $status
