@@ -37,7 +37,15 @@ jobs:
         env:
           PTB_SNAPSHOT_SCREENSHOT_DIR: ${{ runner.temp }}/snapshot-history-renders
           PTB_ZERO_USAGE_SCREENSHOT_DIR: ${{ runner.temp }}/snapshot-history-renders/zero-usage
-        run: ./scripts/test-gate.sh
+        run: |
+          if [ "${{ matrix.os }}" = "macos-15-intel" ]; then
+            # The Intel VM has no Metal device, so the rendering suites abort the process. Run the
+            # companion, shop and save suites only.
+            swift test --filter 'RegionalIncenseTests|IncenseLiveCheckTests|ShopTests|PremiumEggTests|FreshEggTests|MintTests|ShinyCharmTests|CompanionTests|CompanionDisplayStateTests|SaveTransferTests|SaveSnapshotTests|DittoTests|EggPrayerTests|UnownTests|PokemonFormTests|DifficultyTests|DexCompletionStoreTests|PokedexRegionTests|MenuGrowthTests|ProfileGrowthIntegrationTests|LanguageSurfaceRegressionTests' 2>&1 | tee /tmp/incense-tests.log | grep -E "error|failed|LIVE-SHARE|Executed|passed|signal" || true
+            ! grep -E "with [1-9][0-9]* failures|error: |signal code" /tmp/incense-tests.log
+          else
+            ./scripts/test-gate.sh
+          fi
 
       - name: Preserve native snapshot-history renders
         if: always()
