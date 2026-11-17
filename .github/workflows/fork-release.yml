@@ -17,9 +17,6 @@ concurrency:
 permissions:
   contents: write
 
-env:
-  PTB_SIGN_NAME: PokeTokenBar Fork
-
 jobs:
   release:
     name: test-build-release
@@ -37,38 +34,36 @@ jobs:
       - name: Test + coverage gate
         run: ./scripts/test-gate.sh || { echo "::warning::test gate failed once, retrying"; ./scripts/test-gate.sh; }
 
-      - name: Import signing certificate
+      # Upstream's own build script: universal binary, Info.plist. It finds no
+      # identity on the runner and signs ad-hoc; the next step replaces that signature.
+      - name: Build app
+        env:
+          CODESIGN_IDENTITY: none
+        run: ./scripts/build-app.sh
+
+      # Hosted macOS 15 runners refuse to trust a certificate (authorizationdb
+      # write fails with -60005), so build-app.sh's `find-identity -v` lookup cannot
+      # see it. codesign itself signs with an untrusted identity when it is named by
+      # its SHA-1, and the designated requirement still pins the certificate leaf,
+      # which is what keeps the user's Keychain "Always Allow" across updates.
+      - name: Sign with the fork certificate
         env:
           P12_BASE64: ${{ secrets.PTB_SIGN_P12 }}
           P12_PASSWORD: ${{ secrets.PTB_SIGN_P12_PASSWORD }}
+          SIGN_LEAF: ${{ vars.PTB_SIGN_LEAF }}
         run: |
           set -euo pipefail
           KC="$RUNNER_TEMP/signing.keychain-db"
           KC_PW=$(uuidgen)
           printf '%s' "$P12_BASE64" | base64 --decode > "$RUNNER_TEMP/sign.p12"
           security create-keychain -p "$KC_PW" "$KC"
-          security set-keychain-settings -lut 7200 "$KC"
+          security set-keychain-settings -lut 3600 "$KC"
           security unlock-keychain -p "$KC_PW" "$KC"
-          security import "$RUNNER_TEMP/sign.p12" -k "$KC" -P "$P12_PASSWORD" -T /usr/bin/codesign
+          security import "$RUNNER_TEMP/sign.p12" -k "$KC" -P "$P12_PASSWORD" -T /usr/bin/codesign >/dev/null
           rm -f "$RUNNER_TEMP/sign.p12"
           security set-key-partition-list -S apple-tool:,apple:,codesign: -s -k "$KC_PW" "$KC" >/dev/null
-          SEARCH=("$KC")
-          while IFS= read -r k; do k=${k//\"/}; k=${k#"${k%%[![:space:]]*}"}; [ -n "$k" ] && SEARCH+=("$k"); done < <(security list-keychains -d user)
-          security list-keychains -d user -s "${SEARCH[@]}"
-          # A self-signed certificate is a valid code-signing identity only once it is
-          # trusted; build-app.sh looks it up with `security find-identity -v`.
-          security find-certificate -c "$PTB_SIGN_NAME" -p "$KC" > "$RUNNER_TEMP/sign-cert.pem"
-          sudo security authorizationdb write com.apple.trust-settings.admin allow
-          sudo security add-trusted-cert -d -r trustRoot -p codeSign -k /Library/Keychains/System.keychain "$RUNNER_TEMP/sign-cert.pem"
-          security find-identity -v -p codesigning | grep -F "\"$PTB_SIGN_NAME\""
-
-      # Upstream's own build script: universal binary, Info.plist, signing.
-      # PTB_REQUIRE_STABLE_SIGN makes it fail instead of falling back to ad-hoc.
-      - name: Build app
-        env:
-          CODESIGN_IDENTITY: ${{ env.PTB_SIGN_NAME }}
-          PTB_REQUIRE_STABLE_SIGN: "1"
-        run: ./scripts/build-app.sh
+          codesign --force -s "$SIGN_LEAF" --keychain "$KC" build/PokeTokenBar.app
+          security delete-keychain "$KC"
 
       - name: Check and package
         id: pkg
