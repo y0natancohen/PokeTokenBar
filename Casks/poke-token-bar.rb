@@ -2,8 +2,8 @@
 # .github/workflows/fork-release.yml rewrites `version` and `sha256` after each release.
 # No `zap` stanza on purpose: no brew command may delete the save folder.
 cask "poke-token-bar" do
-  version "0.0.0,0"
-  sha256 "0000000000000000000000000000000000000000000000000000000000000000"
+  version "2.5.7,3.1"
+  sha256 "c623a289f5968962546d217baa3229becd17ca3d3764b427bd383fb568c2e610"
 
   url "https://github.com/y0natancohen/PokeTokenBar/releases/download/fork-v#{version.csv.first}-#{version.csv.second}/PokeTokenBar.zip"
   name "PokeTokenBar"
